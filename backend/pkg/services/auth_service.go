@@ -1,6 +1,6 @@
 package services
 
-import "github.com/Rikjimue/TECH120-Prototype/backend/pkg/repositories"
+import "github.com/Rikjimue/breach-radar/backend/pkg/repositories"
 
 type AuthService struct {
 	userRepo repositories.UserRepository

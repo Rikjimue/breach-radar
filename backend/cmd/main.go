@@ -8,8 +8,8 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/api"
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/database"
+	"github.com/Rikjimue/breach-radar/backend/pkg/api"
+	"github.com/Rikjimue/breach-radar/backend/pkg/database"
 )
 
 func main() {
@@ -31,6 +31,10 @@ func main() {
 	address := os.Getenv("ADDRESS")
 	if address == "" {
 		log.Fatal("Failed to initialize ADDRESS environment variable")
+	}
+	universalSalt := os.Getenv("UNIVERSAL_SALT")
+	if universalSalt == "" {
+		log.Fatal("UNIVERSAL_SALT environment variable is required")
 	}
 
 	// Initialize database

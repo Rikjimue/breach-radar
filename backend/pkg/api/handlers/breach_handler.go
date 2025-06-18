@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/models"
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/services"
+	"github.com/Rikjimue/breach-radar/backend/pkg/models"
+	"github.com/Rikjimue/breach-radar/backend/pkg/services"
 )
 
 type BreachHandler struct {
@@ -20,42 +20,31 @@ func NewBreachHandler(breachService *services.BreachService) *BreachHandler {
 	return &BreachHandler{breachService: breachService}
 }
 
-func (h *BreachHandler) BreachChecker(w http.ResponseWriter, r *http.Request) {
+func (h *BreachHandler) BreachSearch(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Recived breach request")
-	var req models.NormalSearchRequest
+	var req models.BreachSearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("Invalid request body -> %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
-
-	matches, err := h.breachService.SearchBreach(ctx, &req)
-	if err != nil {
-		log.Printf("Internal server error -> %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	if req.Mode == "" || len(req.Fields) == 0 {
+		log.Printf("Missing required fields: mode=%s, fields_count=%d", req.Mode, len(req.Fields))
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(matches)
-}
-
-func (h *BreachHandler) SensitiveChecker(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Recived sensitive request")
-	var req models.SensitiveSearchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("Invalid request body: %v", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if req.Mode != "personal" && req.Mode != "sensitive" {
+		log.Printf("Invalid mode: %s", req.Mode)
+		http.Error(w, "Invalid mode", http.StatusBadRequest)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	matches, err := h.breachService.SearchSensitive(ctx, &req)
+	matches, err := h.breachService.BreachSearch(ctx, &req)
 	if err != nil {
 		log.Printf("Internal server error -> %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

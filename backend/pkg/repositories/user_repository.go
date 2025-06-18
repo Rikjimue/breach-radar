@@ -3,7 +3,7 @@ package repositories
 import (
 	"database/sql"
 
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/models"
+	"github.com/Rikjimue/breach-radar/backend/pkg/models"
 )
 
 type UserRepository interface {

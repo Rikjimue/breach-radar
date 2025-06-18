@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/api/handlers"
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/repositories"
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/services"
+	"github.com/Rikjimue/breach-radar/backend/pkg/api/handlers"
+	"github.com/Rikjimue/breach-radar/backend/pkg/repositories"
+	"github.com/Rikjimue/breach-radar/backend/pkg/services"
 )
 
 // TODO: Implement middleware, implement sub-routing
@@ -31,8 +31,7 @@ func NewRouter(db *sql.DB) *http.ServeMux {
 	//mux.HandleFunc("POST /api/v0/signup", authHandler.Signup)
 	//mux.HandleFunc("POST /api/v0/login", authHandler.Login)
 
-	mux.Handle("/api/v0/breach-check", setupCORS(http.HandlerFunc(breachHandler.BreachChecker)))
-	mux.Handle("/api/v0/sensitive-check", setupCORS(http.HandlerFunc(breachHandler.SensitiveChecker)))
+	mux.Handle("/api/v0/breach-search", setupCORS(http.HandlerFunc(breachHandler.BreachSearch)))
 
 	return mux
 }
@@ -41,7 +40,7 @@ func setupCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		// Set CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "https://v5flsvdg-5173.use.devtunnels.ms")
+		w.Header().Set("Access-Control-Allow-Origin", "*") // TODO: Change for production
 		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/models"
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/repositories"
+	"github.com/Rikjimue/breach-radar/backend/pkg/models"
+	"github.com/Rikjimue/breach-radar/backend/pkg/repositories"
 )
 
 type BreachService struct {
@@ -16,84 +16,97 @@ func NewBreachService(breachRepo repositories.BreachRepository) *BreachService {
 	return &BreachService{breachRepo: breachRepo}
 }
 
-func (s *BreachService) SearchBreach(ctx context.Context, req *models.NormalSearchRequest) (*models.NormalSearchResponse, error) {
-
-	if req == nil {
-		return nil, fmt.Errorf("invalid request: request is nil")
+func (s *BreachService) BreachSearch(ctx context.Context, req *models.BreachSearchRequest) (interface{}, error) {
+	if req.Mode == "sensitive" {
+		return s.searchSensitiveData(ctx, req.Fields)
 	}
-
-	response, err := s.breachRepo.SearchBreachMatch(ctx, req.Fields)
-
-	if err != nil {
-		return nil, fmt.Errorf("error searching breach match -> %w", err)
-	}
-
-	return response, nil
-
-	/*
-		Get a map of the tables and an array of the fields
-		{
-			[tablename: []fields]
-		}
-
-		Go through the table and find the rowID with the most amount of matches. If there is none the tablename is removed from the map
-		Then it creates breach matches from the ID
-
-		SELECT breach_name,  FROM breach_metadata WHERE breach_fields && $1
-
-		Use common table expressions to get find the common fields of a []map[fields]content. Query to see if the content is inside all the tables. Then format it for a response of one per each table that has the most fields matching.
-	*/
+	return s.searchPersonalData(ctx, req.Fields)
 }
 
-func (s *BreachService) SearchSensitive(ctx context.Context, req *models.SensitiveSearchRequest) (*models.SensitiveSearchResponse, error) {
-	// Request validation
-	if req == nil {
-		return nil, fmt.Errorf("invalid request: request is nil")
+func (s *BreachService) searchPersonalData(ctx context.Context, fieldHashes map[string]string) (*models.PersonalSearchResponse, error) {
+	fieldNames := make([]string, 0, len(fieldHashes))
+	for field := range fieldHashes {
+		fieldNames = append(fieldNames, field)
 	}
 
-	// Map of the hash combined with the table's metadata
-	match, err := s.breachRepo.SearchSensitiveMatch(ctx, req.Field, req.Hash)
-
+	breaches, err := s.breachRepo.GetBreachesWithFields(ctx, fieldNames)
 	if err != nil {
-		return nil, fmt.Errorf("error searching sensitive data -> %w", err)
+		return nil, fmt.Errorf("failed to get breaches: %w", err)
 	}
 
-	potentialMatches := make(map[string]*models.NormalSearchResponse)
+	var exactMatches []models.ExactMatch
 
-	// For each hash found, create a NormalSearchResponse
-	for hash, metadatas := range match {
-		var matches []models.BreachMatch
-		for _, metadata := range metadatas {
-			// Convert metadata to match
-			match := models.BreachMatch{
-				ID:          metadata.ID,
-				Name:        metadata.Name,
-				Date:        metadata.Date,
-				Description: metadata.Description,
-				Severity:    metadata.Severity,
-				Link:        metadata.Link,
-				Fields:      make(map[string]string),
-			}
-
-			// Set all fields to "Can't Match" except the one that is being searched
-			for _, field := range metadata.Fields {
-				if field == req.Field {
-					match.Fields[field] = "Match" // Only Partial Match, client verifies full match
-				} else {
-					match.Fields[field] = "Can't Match"
-				}
-			}
-
-			matches = append(matches, match)
+	for _, breach := range breaches {
+		matchedFields, err := s.breachRepo.FindExactMatches(ctx, breach.Name, fieldHashes)
+		if err != nil {
+			continue
 		}
 
-		potentialMatches[hash] = &models.NormalSearchResponse{
-			Matches: matches,
+		if len(matchedFields) > 0 {
+			isPartialMatch := len(matchedFields) < len(fieldHashes)
+
+			exactMatch := models.ExactMatch{
+				Name:            breach.Name,
+				Date:            breach.Date.Format("2006-01-02"),
+				AffectedRecords: s.formatRecordCount(int(breach.AffectedRecords)),
+				MatchedFields:   matchedFields,
+				PartialMatch:    isPartialMatch,
+			}
+			exactMatches = append(exactMatches, exactMatch)
 		}
 	}
 
-	// Put data into a response
-	return &models.SensitiveSearchResponse{
-		PotentialPasswords: potentialMatches,
+	return &models.PersonalSearchResponse{
+		ExactMatches: exactMatches,
+		SearchFields: fieldNames,
 	}, nil
+}
+
+func (s *BreachService) searchSensitiveData(ctx context.Context, fieldHashes map[string]string) (*models.SensitiveSearchResponse, error) {
+	var candidateBreaches []models.BreachCandidate
+
+	for fieldType, partialHash := range fieldHashes {
+		breachCandidates, err := s.breachRepo.FindSensitiveMatches(ctx, fieldType, partialHash)
+		if err != nil {
+			continue
+		}
+
+		for breachSource, hashes := range breachCandidates {
+			metadata, err := s.breachRepo.GetBreachMetadata(ctx, breachSource)
+			if err != nil {
+				continue
+			}
+
+			candidate := models.BreachCandidate{
+				Name:            metadata.Name,
+				Date:            metadata.Date.Format("2006-01-02"),
+				AffectedRecords: s.formatRecordCount(int(metadata.AffectedRecords)),
+				HashCandidates:  map[string][]string{fieldType: hashes},
+				PartialMatch:    false,
+			}
+
+			candidateBreaches = append(candidateBreaches, candidate)
+		}
+	}
+
+	fieldNames := make([]string, 0, len(fieldHashes))
+	for field := range fieldHashes {
+		fieldNames = append(fieldNames, field)
+	}
+
+	return &models.SensitiveSearchResponse{
+		CandidateBreaches: candidateBreaches,
+		SearchFields:      fieldNames,
+	}, nil
+}
+
+func (s *BreachService) formatRecordCount(count int) string {
+	if count >= 1000000000 {
+		return fmt.Sprintf("%.1fB", float64(count)/1000000000)
+	} else if count >= 1000000 {
+		return fmt.Sprintf("%.1fM", float64(count)/1000000)
+	} else if count >= 1000 {
+		return fmt.Sprintf("%.1fK", float64(count)/1000)
+	}
+	return fmt.Sprintf("%d", count)
 }

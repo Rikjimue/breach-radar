@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/Rikjimue/TECH120-Prototype/backend/pkg/services"
+	"github.com/Rikjimue/breach-radar/backend/pkg/services"
 )
 
 type AuthHandler struct {

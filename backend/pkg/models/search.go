@@ -1,18 +1,16 @@
 package models
 
-type NormalSearchRequest struct {
-	Fields map[string]string
+type BreachSearchRequest struct {
+	Mode   string            `json:"mode"` // "personal" or "sensitive"
+	Fields map[string]string `json:"fields"`
 }
 
-type NormalSearchResponse struct {
-	Matches []BreachMatch
-}
-
-type SensitiveSearchRequest struct {
-	Field string `json:"field"`
-	Hash  string `json:"hash"`
+type PersonalSearchResponse struct {
+	ExactMatches []ExactMatch `json:"exactMatches"`
+	SearchFields []string     `json:"searchFields"`
 }
 
 type SensitiveSearchResponse struct {
-	PotentialPasswords map[string]*NormalSearchResponse
+	CandidateBreaches []BreachCandidate `json:"candidateBreaches"`
+	SearchFields      []string          `json:"searchFields"`
 }
