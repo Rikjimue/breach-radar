@@ -1,4 +1,4 @@
-module github.com/Rikjimue/breach-radar
+module github.com/Rikjimue/breach-radar/backend
 
 go 1.23.0
 
