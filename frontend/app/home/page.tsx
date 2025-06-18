@@ -15,6 +15,7 @@ import {
   User,
   Phone,
   Mail,
+  MapPin,
   Shield,
   AlertTriangle,
   CheckCircle,
@@ -33,14 +34,45 @@ interface SearchField {
   icon: any
   type: "text" | "password"
   sensitive?: boolean
+  format?: string
+  validation?: (value: string) => boolean
 }
 
 const availableFields: SearchField[] = [
   { id: "firstName", label: "First Name", placeholder: "John", icon: User, type: "text" },
   { id: "lastName", label: "Last Name", placeholder: "Doe", icon: User, type: "text" },
   { id: "email", label: "Email", placeholder: "john@example.com", icon: Mail, type: "text" },
-  { id: "phone", label: "Phone Number", placeholder: "+1 (555) 123-4567", icon: Phone, type: "text" },
+  {
+    id: "phone",
+    label: "Phone Number",
+    placeholder: "+1 (555)-123-4567",
+    icon: Phone,
+    type: "text",
+    format: "+extension (###)-###-####",
+    validation: (value: string) => /^\+\d{1,3} $$\d{3}$$-\d{3}-\d{4}$/.test(value),
+  },
+  {
+    id: "address",
+    label: "Address",
+    placeholder: "123 Main St, New York, NY, 10001",
+    icon: MapPin,
+    type: "text",
+    format: "Street, City, State, ZIP",
+    validation: (value: string) => {
+      const parts = value.split(",").map((part) => part.trim())
+      return parts.length === 4 && parts.every((part) => part.length > 0)
+    },
+  },
   { id: "username", label: "Username", placeholder: "your_username", icon: User, type: "text" },
+  {
+    id: "dateOfBirth",
+    label: "Date of Birth",
+    placeholder: "MM/DD/YYYY",
+    icon: User,
+    type: "text",
+    format: "MM/DD/YYYY",
+    validation: (value: string) => /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])\/\d{4}$/.test(value),
+  },
 ]
 
 const sensitiveFields: SearchField[] = [
@@ -76,6 +108,7 @@ export default function SearchPage() {
   const [activeFields, setActiveFields] = useState<string[]>(["firstName"])
   const [selectedSensitiveField, setSelectedSensitiveField] = useState<string>("")
   const [searchValues, setSearchValues] = useState<Record<string, string>>({})
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [showPassword, setShowPassword] = useState(false)
   const [searchResults, setSearchResults] = useState<any>(null)
   const [isSearching, setIsSearching] = useState(false)
@@ -98,18 +131,59 @@ export default function SearchPage() {
 
   const removeField = (fieldId: string) => {
     setActiveFields(activeFields.filter((id) => id !== fieldId))
-    // Clear the value when removing field
+    // Clear the value and error when removing field
     const newValues = { ...searchValues }
+    const newErrors = { ...fieldErrors }
     delete newValues[fieldId]
+    delete newErrors[fieldId]
     setSearchValues(newValues)
+    setFieldErrors(newErrors)
+  }
+
+  const validateField = (fieldId: string, value: string) => {
+    const field = getFieldById(fieldId)
+    if (!field || !field.validation || !value.trim()) {
+      return ""
+    }
+
+    if (!field.validation(value)) {
+      return `Please use format: ${field.format}`
+    }
+
+    return ""
+  }
+
+  const handleFieldChange = (fieldId: string, value: string) => {
+    setSearchValues((prev) => ({ ...prev, [fieldId]: value }))
+
+    // Clear error when user starts typing
+    if (fieldErrors[fieldId]) {
+      setFieldErrors((prev) => {
+        const newErrors = { ...prev }
+        delete newErrors[fieldId]
+        return newErrors
+      })
+    }
+
+    // Validate on blur or when field is complete
+    const field = getFieldById(fieldId)
+    if (field?.validation && value.trim()) {
+      const error = validateField(fieldId, value)
+      if (error) {
+        setFieldErrors((prev) => ({ ...prev, [fieldId]: error }))
+      }
+    }
   }
 
   const handleSensitiveFieldChange = (fieldId: string) => {
-    // Clear previous sensitive field value
+    // Clear previous sensitive field value and error
     if (selectedSensitiveField) {
       const newValues = { ...searchValues }
+      const newErrors = { ...fieldErrors }
       delete newValues[selectedSensitiveField]
+      delete newErrors[selectedSensitiveField]
       setSearchValues(newValues)
+      setFieldErrors(newErrors)
     }
     setSelectedSensitiveField(fieldId)
     setShowPassword(false)
@@ -118,14 +192,37 @@ export default function SearchPage() {
   const clearSensitiveField = () => {
     if (selectedSensitiveField) {
       const newValues = { ...searchValues }
+      const newErrors = { ...fieldErrors }
       delete newValues[selectedSensitiveField]
+      delete newErrors[selectedSensitiveField]
       setSearchValues(newValues)
+      setFieldErrors(newErrors)
     }
     setSelectedSensitiveField("")
     setShowPassword(false)
   }
 
   const handleSearch = async () => {
+    // Validate all fields before searching
+    const errors: Record<string, string> = {}
+    const fieldsToValidate =
+      searchMode === "personal" ? activeFields : selectedSensitiveField ? [selectedSensitiveField] : []
+
+    fieldsToValidate.forEach((fieldId) => {
+      const value = searchValues[fieldId]
+      if (value?.trim()) {
+        const error = validateField(fieldId, value)
+        if (error) {
+          errors[fieldId] = error
+        }
+      }
+    })
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      return
+    }
+
     setIsSearching(true)
 
     try {
@@ -183,6 +280,17 @@ export default function SearchPage() {
   }
 
   const selectedSensitiveFieldData = selectedSensitiveField ? getFieldById(selectedSensitiveField) : null
+
+  // Check if search can be performed (no validation errors and has values)
+  const canSearch = () => {
+    const hasErrors = Object.keys(fieldErrors).length > 0
+    const hasValues =
+      searchMode === "personal"
+        ? activeFields.some((fieldId) => searchValues[fieldId]?.trim())
+        : selectedSensitiveField && searchValues[selectedSensitiveField]?.trim()
+
+    return !hasErrors && hasValues && !isSearching
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -252,7 +360,8 @@ export default function SearchPage() {
                   <span>Personal Information Search</span>
                 </CardTitle>
                 <CardDescription>
-                  Add or remove fields to customize your search. Multiple fields help narrow down results.
+                  Add or remove fields to customize your search. Multiple fields help narrow down results. Some fields
+                  require specific formats.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -262,26 +371,34 @@ export default function SearchPage() {
                     const field = getFieldById(fieldId)
                     if (!field) return null
                     const Icon = field.icon
+                    const hasError = fieldErrors[fieldId]
 
                     return (
-                      <div key={fieldId} className="flex items-center space-x-2">
+                      <div key={fieldId} className="flex items-start space-x-2">
                         <div className="flex-1">
                           <Label htmlFor={fieldId} className="flex items-center space-x-2 mb-2">
                             <Icon className="h-4 w-4" />
                             <span>{field.label}</span>
+                            {field.format && (
+                              <Badge variant="outline" className="text-xs">
+                                Format: {field.format}
+                              </Badge>
+                            )}
                           </Label>
                           <Input
                             id={fieldId}
                             placeholder={field.placeholder}
                             value={searchValues[fieldId] || ""}
-                            onChange={(e) => setSearchValues((prev) => ({ ...prev, [fieldId]: e.target.value }))}
+                            onChange={(e) => handleFieldChange(fieldId, e.target.value)}
+                            className={hasError ? "border-red-500 focus:border-red-500" : ""}
                           />
+                          {hasError && <p className="text-sm text-red-600 mt-1">{hasError}</p>}
                         </div>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => removeField(fieldId)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 mt-6"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 mt-8"
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -382,9 +499,7 @@ export default function SearchPage() {
                         type={selectedSensitiveFieldData.type === "password" && !showPassword ? "password" : "text"}
                         placeholder={selectedSensitiveFieldData.placeholder}
                         value={searchValues[selectedSensitiveField] || ""}
-                        onChange={(e) =>
-                          setSearchValues((prev) => ({ ...prev, [selectedSensitiveField]: e.target.value }))
-                        }
+                        onChange={(e) => handleFieldChange(selectedSensitiveField, e.target.value)}
                         className="pr-10"
                       />
                       {selectedSensitiveFieldData.type === "password" && (
@@ -420,11 +535,7 @@ export default function SearchPage() {
           {/* Search Button */}
           <Button
             onClick={handleSearch}
-            disabled={
-              isSearching ||
-              (searchMode === "personal" && activeFields.length === 0) ||
-              (searchMode === "sensitive" && !selectedSensitiveField)
-            }
+            disabled={!canSearch()}
             className="w-full bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
             size="lg"
           >
@@ -555,6 +666,14 @@ export default function SearchPage() {
               <CardTitle>Search Tips</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex items-start space-x-2">
+                <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium">Format requirements</p>
+                  <p className="text-muted-foreground">Phone: +1 (555)-123-4567</p>
+                  <p className="text-muted-foreground">Address: Street, City, State, ZIP</p>
+                </div>
+              </div>
               <div className="flex items-start space-x-2">
                 <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div className="text-sm">
