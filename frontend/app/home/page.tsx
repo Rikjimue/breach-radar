@@ -335,9 +335,9 @@ export default function SearchPage() {
     for (const breach of serverResults.candidateBreaches || []) {
       const matchedFields: string[] = [];
       
-      for (const [fieldType, candidateHashes] of Object.entries(breach.hashCandidates || {})) {
-        const userFullHash = clientHashes[fieldType];
-        if (userFullHash && (candidateHashes as string[]).includes(userFullHash)) {
+      for (const [fieldType, candidateHashes] of Object.entries(breach.candidateHashes) as [string, string[]][]) {
+        const clientHash = clientHashes[fieldType];
+        if (clientHash && candidateHashes.includes(clientHash)) {
           matchedFields.push(fieldType);
         }
       }
@@ -368,55 +368,36 @@ export default function SearchPage() {
     };
   };
 
-  const calculateDynamicSeverity = (matchedFields: string[], recordCount: string): string => {
-    let score = 0;
+  const calculateDynamicSeverity = (matchedFields: string[], affectedRecords: string): string => {
+    const sensitiveFieldTypes = ['ssn', 'creditCard', 'password', 'driverLicense', 'passport'];
+    const recordCount = parseInt(affectedRecords.replace(/\D/g, '')) || 0;
     
-    const fieldScores: Record<string, number> = {
-      ssn: 100, creditCard: 90, driverLicense: 80, passport: 85, password: 75,
-      email: 40, phone: 35, address: 45,
-      firstName: 20, lastName: 25, username: 30,
-      city: 15, state: 10, zipCode: 20, dateOfBirth: 50, country: 10
-    };
+    const hasSensitiveData = matchedFields.some(field => sensitiveFieldTypes.includes(field));
+    const fieldCount = matchedFields.length;
     
-    for (const field of matchedFields) {
-      score += fieldScores[field] || 10;
-    }
-    
-    const records = parseInt(recordCount.replace(/\D/g, '')) || 0;
-    if (records > 100000000) {
-      score = Math.floor(score * 1.3);
-    } else if (records > 10000000) {
-      score = Math.floor(score * 1.1);
-    }
-    
-    const sensitiveFields = ['ssn', 'creditCard', 'driverLicense', 'passport', 'password', 'dateOfBirth'];
-    const sensitiveCount = matchedFields.filter(field => sensitiveFields.includes(field)).length;
-    
-    if (sensitiveCount >= 3) {
-      score = Math.floor(score * 1.4);
-    } else if (sensitiveCount >= 2) {
-      score = Math.floor(score * 1.2);
-    }
-    
-    if (score >= 200) return "Critical";
-    if (score >= 120) return "High";
-    if (score >= 60) return "Medium";
+    if (hasSensitiveData || recordCount > 10000000) return "Critical";
+    if (fieldCount >= 3 || recordCount > 1000000) return "High";
+    if (fieldCount >= 2 || recordCount > 100000) return "Medium";
     return "Low";
   };
 
   const calculateRiskScore = (matchedFields: string[]): number => {
-    const severity = calculateDynamicSeverity(matchedFields, "1000000");
-    const scoreMap = { Critical: 95, High: 75, Medium: 50, Low: 25 };
-    return scoreMap[severity as keyof typeof scoreMap] || 25;
+    const fieldWeights: Record<string, number> = {
+      ssn: 50, creditCard: 45, password: 40, driverLicense: 35, passport: 30,
+      email: 20, phone: 15, firstName: 5, lastName: 5, address: 10,
+      username: 10, city: 3, state: 3, zipCode: 5, country: 2, dateOfBirth: 15
+    };
+    
+    return Math.min(100, matchedFields.reduce((sum, field) => sum + (fieldWeights[field] || 0), 0));
   };
 
-  const formatTimeAgo = (date: string): string => {
-    const breachDate = new Date(date);
+  const formatTimeAgo = (dateString: string): string => {
+    const breachDate = new Date(dateString);
     const now = new Date();
-    const years = Math.floor((now.getTime() - breachDate.getTime()) / (1000 * 60 * 60 * 24 * 365));
+    const diffInDays = Math.floor((now.getTime() - breachDate.getTime()) / (1000 * 60 * 60 * 24));
     
-    if (years >= 1) {
-      return `${years} year${years > 1 ? 's' : ''} ago`;
+    if (diffInDays < 30) {
+      return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
     }
     
     const months = Math.floor((now.getTime() - breachDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
@@ -459,7 +440,8 @@ export default function SearchPage() {
         </AlertDescription>
       </Alert>
 
-      <div className="grid lg:grid-cols-3 gap-8">
+      {/* Main Grid Layout - Search Form and Sidebar */}
+      <div className="grid lg:grid-cols-3 gap-8 mb-8">
         {/* Search Interface */}
         <div className="lg:col-span-2 space-y-6">
           {/* Search Mode Selection */}
@@ -512,82 +494,95 @@ export default function SearchPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Active Fields */}
-                {activeFields.map((fieldId) => {
-                  const field = getFieldById(fieldId)
-                  if (!field) return null
-                  const Icon = field.icon
-
-                  return (
-                    <div key={fieldId} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor={fieldId} className="flex items-center space-x-2">
-                          <Icon className="h-4 w-4" />
-                          <span>{field.label}</span>
-                        </Label>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeField(fieldId)}
-                          className="h-8 w-8 p-0"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <Input
-                        id={fieldId}
-                        placeholder={field.placeholder}
-                        value={searchValues[fieldId] || ""}
-                        onChange={(e) => setSearchValues({ ...searchValues, [fieldId]: e.target.value })}
-                      />
-                    </div>
-                  )
-                })}
-
-                {/* Add Field Buttons */}
-                <div className="flex flex-wrap gap-2">
-                  {availableFields
-                    .filter((field) => !activeFields.includes(field.id))
-                    .map((field) => {
+                {activeFields.length > 0 && (
+                  <div className="space-y-3">
+                    <Label>Active Search Fields</Label>
+                    {activeFields.map((fieldId) => {
+                      const field = availableFields.find((f) => f.id === fieldId)
+                      if (!field) return null
                       const Icon = field.icon
                       return (
-                        <Button
-                          key={field.id}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => addField(field.id)}
-                          className="flex items-center space-x-1"
-                        >
-                          <Plus className="h-3 w-3" />
-                          <Icon className="h-3 w-3" />
-                          <span>{field.label}</span>
-                        </Button>
+                        <div key={fieldId} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor={fieldId} className="flex items-center space-x-2">
+                              <Icon className="h-4 w-4" />
+                              <span>{field.label}</span>
+                            </Label>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeField(fieldId)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <Input
+                            id={fieldId}
+                            type={field.type}
+                            placeholder={field.placeholder}
+                            value={searchValues[fieldId] || ""}
+                            onChange={(e) => setSearchValues({ ...searchValues, [fieldId]: e.target.value })}
+                          />
+                        </div>
                       )
                     })}
+                  </div>
+                )}
+
+                {/* Add Field */}
+                <div className="space-y-2">
+                  <Label>Add Search Field</Label>
+                  <Select onValueChange={addField}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a field to add" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableFields
+                        .filter((field) => !activeFields.includes(field.id))
+                        .map((field) => {
+                          const Icon = field.icon
+                          return (
+                            <SelectItem key={field.id} value={field.id}>
+                              <div className="flex items-center space-x-2">
+                                <Icon className="h-4 w-4" />
+                                <span>{field.label}</span>
+                              </div>
+                            </SelectItem>
+                          )
+                        })}
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Sensitive Information Search */}
           {searchMode === "sensitive" && (
             <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2 text-orange-700 dark:text-orange-400">
-                  <Lock className="h-5 w-5" />
-                  <span>Sensitive Information Search</span>
+                  <Shield className="h-5 w-5" />
+                  <span>Sensitive Data Search</span>
                 </CardTitle>
                 <CardDescription>
-                  Search for highly sensitive data. Only one sensitive field can be searched at a time for maximum
-                  privacy protection.
+                  Search one sensitive field at a time using advanced privacy protection (k-anonymity).
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Sensitive Field Selection */}
+                <Alert className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
+                  <Info className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                  <AlertDescription className="text-orange-800 dark:text-orange-200">
+                    <strong>Enhanced Privacy:</strong> Only partial data is sent to servers. Full verification happens
+                    on your device.
+                  </AlertDescription>
+                </Alert>
+
                 <div className="space-y-2">
-                  <Label>Select Sensitive Data Type</Label>
-                  <Select value={selectedSensitiveField} onValueChange={handleSensitiveFieldChange}>
+                  <Label>Select Sensitive Field</Label>
+                  <Select onValueChange={handleSensitiveFieldChange} value={selectedSensitiveField}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Choose sensitive data type to search" />
+                      <SelectValue placeholder="Choose a sensitive field" />
                     </SelectTrigger>
                     <SelectContent>
                       {sensitiveFields.map((field) => {
@@ -605,15 +600,14 @@ export default function SearchPage() {
                   </Select>
                 </div>
 
-                {/* Sensitive Field Input */}
-                {selectedSensitiveFieldData && (
+                {selectedSensitiveField && selectedSensitiveFieldData && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="sensitiveInput" className="flex items-center space-x-2">
                         <selectedSensitiveFieldData.icon className="h-4 w-4" />
                         <span>{selectedSensitiveFieldData.label}</span>
                       </Label>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex space-x-1">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -670,151 +664,159 @@ export default function SearchPage() {
               </Button>
             </CardContent>
           </Card>
+
+          {/* SEARCH RESULTS SECTION - IN LEFT COLUMN ONLY */}
+          {(searchResults || searchError) && (
+            <div className="space-y-6">
+              {/* Error Display */}
+              {searchError && (
+                <Card className="border-red-200 dark:border-red-800">
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2 text-red-700 dark:text-red-400">
+                      <AlertTriangle className="h-5 w-5" />
+                      <span>Search Error</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+                        <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        <AlertDescription className="text-red-800 dark:text-red-200">
+                          <strong>Error:</strong> {searchError}
+                        </AlertDescription>
+                      </Alert>
+                      
+                      <div className="text-sm text-muted-foreground space-y-2">
+                        <p><strong>Common issues:</strong></p>
+                        <ul className="list-disc list-inside space-y-1 ml-2">
+                          <li>Network connection problems</li>
+                          <li>Server temporarily unavailable</li>
+                          <li>Invalid search parameters</li>
+                          <li>Rate limiting (too many requests)</li>
+                        </ul>
+                        
+                        <p className="mt-3">
+                          <strong>Try:</strong> Check your connection and try searching again in a few moments.
+                        </p>
+                      </div>
+                      
+                      <Button 
+                        onClick={() => setSearchError(null)} 
+                        variant="outline" 
+                        size="sm"
+                        className="w-full"
+                      >
+                        Dismiss Error
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Search Results */}
+              {searchResults && !searchError && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      {searchResults.found ? (
+                        <>
+                          <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                          <span className="text-red-600 dark:text-red-400">Data Found in Breaches</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                          <span className="text-green-600 dark:text-green-400">No Data Found</span>
+                        </>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {searchResults.found ? (
+                      <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                          Your data appears in <strong>{searchResults.breaches}</strong> breach{searchResults.breaches !== 1 ? 'es' : ''} affecting approximately{' '}
+                          <strong>{searchResults.records.toLocaleString()}</strong> total records.
+                        </p>
+                        
+                        <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+                          <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                          <AlertDescription className="text-red-800 dark:text-red-200">
+                            <strong>Action Recommended:</strong> Consider changing passwords and enabling two-factor authentication for affected accounts.
+                          </AlertDescription>
+                        </Alert>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="font-semibold">Affected Breaches ({searchResults.totalBreaches} total):</h3>
+                            {searchResults.breachList.length > 3 && (
+                              <div className="relative w-64">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                  placeholder="Search breaches..."
+                                  className="pl-10"
+                                  value={breachSearchQuery}
+                                  onChange={(e) => setBreachSearchQuery(e.target.value)}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
+                            {filteredBreaches.map((breach, index) => (
+                              <div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-950/50">
+                                <div className="flex items-start justify-between">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center space-x-2">
+                                      <h4 className="font-medium text-red-900 dark:text-red-100">{breach.name}</h4>
+                                      <Badge variant={getSeverityColor(breach.severity)} className="text-xs">
+                                        {breach.severity}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-red-700 dark:text-red-300">
+                                      <strong>Date:</strong> {breach.date} ({breach.timeAgo})
+                                    </p>
+                                    <p className="text-sm text-red-700 dark:text-red-300">
+                                      <strong>Affected Records:</strong> {parseInt(breach.records).toLocaleString()}
+                                    </p>
+                                    <p className="text-sm text-red-700 dark:text-red-300">
+                                      <strong>Matched Fields:</strong> {breach.matchedFields.join(", ")}
+                                    </p>
+                                    <p className="text-sm text-red-700 dark:text-red-300">
+                                      <strong>Risk Score:</strong> {breach.riskScore}/100
+                                    </p>
+                                  </div>
+                                  <Badge variant="destructive" className="ml-4">
+                                    Verified
+                                  </Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <p className="text-green-800 dark:text-green-200">
+                          Your data was not found in any known breaches.
+                        </p>
+                        <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                          <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                          <AlertDescription className="text-green-800 dark:text-green-200">
+                            Your information appears to be secure based on our current database.
+                          </AlertDescription>
+                        </Alert>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Results Panel */}
+        {/* Sidebar with Information Cards (KEEP AS IS) */}
         <div className="space-y-6">
-          {/* Error Display */}
-          {searchError && (
-            <Card className="border-red-200 dark:border-red-800">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2 text-red-700 dark:text-red-400">
-                  <AlertTriangle className="h-5 w-5" />
-                  <span>Search Error</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                    <AlertDescription className="text-red-800 dark:text-red-200">
-                      <strong>Error:</strong> {searchError}
-                    </AlertDescription>
-                  </Alert>
-                  
-                  <div className="text-sm text-muted-foreground space-y-2">
-                    <p><strong>Common issues:</strong></p>
-                    <ul className="list-disc list-inside space-y-1 ml-2">
-                      <li>Network connection problems</li>
-                      <li>Server temporarily unavailable</li>
-                      <li>Invalid search parameters</li>
-                      <li>Rate limiting (too many requests)</li>
-                    </ul>
-                    
-                    <p className="mt-3">
-                      <strong>Try:</strong> Check your connection and try searching again in a few moments.
-                    </p>
-                  </div>
-                  
-                  <Button 
-                    onClick={() => setSearchError(null)} 
-                    variant="outline" 
-                    size="sm"
-                    className="w-full"
-                  >
-                    Dismiss Error
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Search Status */}
-          {searchResults && !searchError && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  {searchResults.found ? (
-                    <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                  ) : (
-                    <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  )}
-                  <span>{searchResults.found ? "Data Found in Breaches" : "No Data Found"}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {searchResults.found ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      Your data appears in <strong>{searchResults.breaches}</strong> breach{searchResults.breaches !== 1 ? 'es' : ''} affecting approximately{' '}
-                      <strong>{searchResults.records.toLocaleString()}</strong> total records.
-                    </p>
-                    
-                    <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-                      <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-                      <AlertDescription className="text-red-800 dark:text-red-200">
-                        <strong>Action Recommended:</strong> Consider changing passwords and enabling two-factor authentication for affected accounts.
-                      </AlertDescription>
-                    </Alert>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold">Affected Breaches ({searchResults.totalBreaches} total):</h3>
-                        {searchResults.breachList.length > 3 && (
-                          <div className="relative w-64">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              placeholder="Search breaches..."
-                              className="pl-10"
-                              value={breachSearchQuery}
-                              onChange={(e) => setBreachSearchQuery(e.target.value)}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
-                        {filteredBreaches.map((breach, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <p className="font-medium">{breach.name}</p>
-                                {breach.partialMatch && (
-                                  <Badge variant="outline" className="text-xs">
-                                    Partial Match
-                                  </Badge>
-                                )}
-                              </div>
-                              <p className="text-sm text-muted-foreground mb-1">
-                                {breach.date} • {breach.records} records • {breach.timeAgo}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Matched: {breach.matchedFields.map((fieldId) => {
-                                  const field = getFieldById(fieldId)
-                                  return field?.label
-                                }).join(", ")}
-                              </p>
-                              <div className="flex items-center space-x-2 mt-1">
-                                <Badge variant={getSeverityColor(breach.severity) as any}>
-                                  {breach.severity}
-                                </Badge>
-                                <span className="text-xs text-muted-foreground">
-                                  Risk: {breach.riskScore}/100
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      Great news! Your data was not found in any known breaches.
-                    </p>
-                    <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      <AlertDescription className="text-green-800 dark:text-green-200">
-                        Your information appears to be secure based on our current database.
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
           {/* Information Panel */}
           <Card>
             <CardHeader>
