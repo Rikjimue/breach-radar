@@ -15,8 +15,8 @@ export async function GET() {
       totalRecordsChange: "+0 this month", // e.g., "+2.3B this month"
       activeBreaches: 0, // e.g., 8547
       activeBreachesChange: 0, // e.g., 127
-      dailySearches: "0", // e.g., "2.1M"
-      dailySearchesChange: "+0% from yesterday", // e.g., "+15.2% from yesterday"
+      dataSources: "0", // e.g., "450+"
+      dataSourcesChange: "+0 verified this month", // e.g., "+12 verified this month"
       privacyScore: "99.9%",
       breachActivity: Array(30).fill(0), // Array of 30 numbers representing daily breach counts
       breachSeverity: {

@@ -4,15 +4,15 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, TrendingDown, Database, AlertTriangle, Shield, Users } from "lucide-react"
+import { TrendingUp, TrendingDown, Database, AlertTriangle, Shield } from "lucide-react"
 
 interface StatisticsData {
   totalRecords: string
   totalRecordsChange: string
   activeBreaches: number
   activeBreachesChange: number
-  dailySearches: string
-  dailySearchesChange: string
+  dataSources: string
+  dataSourcesChange: string
   privacyScore: string
   breachActivity: number[]
   breachSeverity: {
@@ -52,12 +52,55 @@ export default function StatisticsPage() {
   useEffect(() => {
     const fetchStatistics = async () => {
       try {
-        const response = await fetch("/api/statistics")
-        if (!response.ok) {
-          throw new Error("Failed to fetch statistics")
+        // Mock statistics data
+        const statistics = {
+          totalRecords: "0", // e.g., "15.2B"
+          totalRecordsChange: "+0 this month", // e.g., "+2.3B this month"
+          activeBreaches: 0, // e.g., 8547
+          activeBreachesChange: 0, // e.g., 127
+          dataSources: "0", // e.g., "450+"
+          dataSourcesChange: "+0 verified this month", // e.g., "+12 verified this month"
+          privacyScore: "99.9%",
+          breachActivity: [
+            20, 35, 50, 65, 80, 70, 55, 40, 60, 75, 90, 85, 70, 60, 50, 40, 30, 25, 35, 45, 55, 65, 75, 85, 95, 80, 65,
+            50, 35, 20,
+          ],
+          breachSeverity: {
+            critical: 25,
+            high: 30,
+            medium: 25,
+            low: 20,
+          },
+          topIndustries: [
+            { industry: "Healthcare", breaches: 120, trend: "up" },
+            { industry: "Finance", breaches: 95, trend: "down" },
+            { industry: "Technology", breaches: 80, trend: "up" },
+          ],
+          dataTypes: [
+            { type: "Email Addresses", percentage: 85 },
+            { type: "Passwords", percentage: 70 },
+            { type: "Personal Identifiable Information", percentage: 60 },
+          ],
+          recentBreaches: [
+            { name: "Company A", records: "1.2M", timeAgo: "2 days ago", severity: "Critical" },
+            { name: "Organization B", records: "900K", timeAgo: "5 days ago", severity: "High" },
+            { name: "Service C", records: "500K", timeAgo: "1 week ago", severity: "Medium" },
+          ],
+          globalImpact: {
+            northAmerica: "40%",
+            europe: "30%",
+            asiaPacific: "20%",
+            otherRegions: "10%",
+          },
         }
-        const data = await response.json()
-        setStats(data)
+        setStats(statistics)
+        setLoading(false)
+        // const response = await fetch("/api/statistics")
+        // if (!response.ok) {
+        //   throw new Error("Failed to fetch statistics")
+        // }
+        // const data = await response.json()
+        // setStats(data)
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred")
       } finally {
@@ -156,14 +199,14 @@ export default function StatisticsPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Daily Searches</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Data Sources</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.dailySearches}</div>
-            <div className="flex items-center text-xs text-green-600 dark:text-green-400">
+            <div className="text-2xl font-bold">{stats.dataSources}</div>
+            <div className="flex items-center text-xs text-blue-600 dark:text-blue-400">
               <TrendingUp className="h-3 w-3 mr-1" />
-              {stats.dailySearchesChange}
+              {stats.dataSourcesChange}
             </div>
           </CardContent>
         </Card>
