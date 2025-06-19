@@ -26,7 +26,7 @@ func NewSQLBreachRepository(db *sql.DB) *SQLBreachRepository {
 
 func (r *SQLBreachRepository) GetBreachesWithFields(ctx context.Context, fieldNames []string) ([]models.BreachMetadata, error) {
 	query := `
-		SELECT name, breach_date, affected_records, fields
+		SELECT name, display_name, breach_date, affected_records, fields
 		FROM breach_metadata 
 		WHERE fields && $1
 		ORDER BY breach_date DESC`
@@ -40,7 +40,7 @@ func (r *SQLBreachRepository) GetBreachesWithFields(ctx context.Context, fieldNa
 	var breaches []models.BreachMetadata
 	for rows.Next() {
 		var breach models.BreachMetadata
-		if err := rows.Scan(&breach.Name, &breach.Date, &breach.AffectedRecords, pq.Array(&breach.Fields)); err != nil {
+		if err := rows.Scan(&breach.Name, &breach.DisplayName, &breach.Date, &breach.AffectedRecords, pq.Array(&breach.Fields)); err != nil {
 			continue
 		}
 		breaches = append(breaches, breach)
@@ -50,11 +50,12 @@ func (r *SQLBreachRepository) GetBreachesWithFields(ctx context.Context, fieldNa
 }
 
 func (r *SQLBreachRepository) GetBreachMetadata(ctx context.Context, breachName string) (*models.BreachMetadata, error) {
-	query := `SELECT name, breach_date, affected_records FROM breach_metadata WHERE name = $1`
+	query := `SELECT name, display_name, breach_date, affected_records FROM breach_metadata WHERE name = $1`
 
 	var metadata models.BreachMetadata
 	err := r.db.QueryRowContext(ctx, query, breachName).Scan(
 		&metadata.Name,
+		&metadata.DisplayName, // Added display_name
 		&metadata.Date,
 		&metadata.AffectedRecords,
 	)

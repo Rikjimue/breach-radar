@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Search,
   Plus,
@@ -25,10 +24,12 @@ import {
   CreditCard,
   Hash,
   Loader2,
+  MapPin,
+  Calendar,
 } from "lucide-react"
 
 // Universal salt - in production, get this from environment or server
-const UNIVERSAL_SALT = "your-super-secret-universal-salt-breachguard";
+const UNIVERSAL_SALT = "o129SGl7g21";
 
 // Hashing service
 class HashingService {
@@ -112,12 +113,12 @@ const availableFields: SearchField[] = [
   { id: "email", label: "Email", placeholder: "john@example.com", icon: Mail, type: "text" },
   { id: "phone", label: "Phone Number", placeholder: "+1 (555) 123-4567", icon: Phone, type: "text" },
   { id: "username", label: "Username", placeholder: "your_username", icon: User, type: "text" },
-  { id: "address", label: "Address", placeholder: "123 Main St", icon: User, type: "text" },
-  { id: "city", label: "City", placeholder: "New York", icon: User, type: "text" },
-  { id: "state", label: "State", placeholder: "NY", icon: User, type: "text" },
+  { id: "address", label: "Address", placeholder: "123 Main St", icon: MapPin, type: "text" },
+  { id: "city", label: "City", placeholder: "New York", icon: MapPin, type: "text" },
+  { id: "state", label: "State", placeholder: "NY", icon: MapPin, type: "text" },
   { id: "zipCode", label: "ZIP Code", placeholder: "10001", icon: Hash, type: "text" },
-  { id: "country", label: "Country", placeholder: "United States", icon: User, type: "text" },
-  { id: "dateOfBirth", label: "Date of Birth", placeholder: "1990-01-01", icon: User, type: "text" },
+  { id: "country", label: "Country", placeholder: "United States", icon: MapPin, type: "text" },
+  { id: "dateOfBirth", label: "Date of Birth", placeholder: "1990-12-25", icon: Calendar, type: "text" },
 ]
 
 const sensitiveFields: SearchField[] = [
@@ -261,7 +262,7 @@ export default function SearchPage() {
         return;
       }
 
-      const response = await fetch("/api/breach-search", {
+      const response = await fetch("http://localhost:8080/api/v0/breach-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -424,10 +425,9 @@ export default function SearchPage() {
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold mb-4">Modular Data Breach Search</h1>
+        <h1 className="text-4xl font-bold mb-4">Personal Information Search</h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          Build your custom search by adding the data fields you want to check. Each search is private and cannot be
-          linked to you.
+          Add or remove fields to customize your search. Multiple fields help narrow down results. Some fields require specific formats.
         </p>
       </div>
 
@@ -530,29 +530,29 @@ export default function SearchPage() {
                   </div>
                 )}
 
-                {/* Add Field */}
-                <div className="space-y-2">
+                {/* Add Field Buttons */}
+                <div className="space-y-3">
                   <Label>Add Search Field</Label>
-                  <Select onValueChange={addField}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a field to add" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableFields
-                        .filter((field) => !activeFields.includes(field.id))
-                        .map((field) => {
-                          const Icon = field.icon
-                          return (
-                            <SelectItem key={field.id} value={field.id}>
-                              <div className="flex items-center space-x-2">
-                                <Icon className="h-4 w-4" />
-                                <span>{field.label}</span>
-                              </div>
-                            </SelectItem>
-                          )
-                        })}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex flex-wrap gap-2">
+                    {availableFields
+                      .filter((field) => !activeFields.includes(field.id))
+                      .map((field) => {
+                        const Icon = field.icon
+                        return (
+                          <Button
+                            key={field.id}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addField(field.id)}
+                            className="flex items-center space-x-2 hover:bg-muted"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <Icon className="h-4 w-4" />
+                            <span>{field.label}</span>
+                          </Button>
+                        )
+                      })}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -578,26 +578,30 @@ export default function SearchPage() {
                   </AlertDescription>
                 </Alert>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label>Select Sensitive Field</Label>
-                  <Select onValueChange={handleSensitiveFieldChange} value={selectedSensitiveField}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a sensitive field" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {sensitiveFields.map((field) => {
-                        const Icon = field.icon
-                        return (
-                          <SelectItem key={field.id} value={field.id}>
-                            <div className="flex items-center space-x-2">
-                              <Icon className="h-4 w-4" />
-                              <span>{field.label}</span>
-                            </div>
-                          </SelectItem>
-                        )
-                      })}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex flex-wrap gap-2">
+                    {sensitiveFields.map((field) => {
+                      const Icon = field.icon
+                      const isSelected = selectedSensitiveField === field.id
+                      return (
+                        <Button
+                          key={field.id}
+                          variant={isSelected ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleSensitiveFieldChange(field.id)}
+                          className={`flex items-center space-x-2 ${
+                            isSelected 
+                              ? "bg-orange-600 hover:bg-orange-700 dark:bg-orange-500 dark:hover:bg-orange-600 text-white" 
+                              : "border-orange-200 text-orange-700 hover:bg-orange-50 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-950"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                          <span>{field.label}</span>
+                        </Button>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {selectedSensitiveField && selectedSensitiveFieldData && (
@@ -815,7 +819,7 @@ export default function SearchPage() {
           )}
         </div>
 
-        {/* Sidebar with Information Cards (KEEP AS IS) */}
+        {/* Sidebar with Information Cards */}
         <div className="space-y-6">
           {/* Information Panel */}
           <Card>

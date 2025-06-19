@@ -46,7 +46,7 @@ func (s *BreachService) searchPersonalData(ctx context.Context, fieldHashes map[
 			isPartialMatch := len(matchedFields) < len(fieldHashes)
 
 			exactMatch := models.ExactMatch{
-				Name:            breach.Name,
+				Name:            breach.DisplayName, // Use display_name instead of name
 				Date:            breach.Date.Format("2006-01-02"),
 				AffectedRecords: s.formatRecordCount(int(breach.AffectedRecords)),
 				MatchedFields:   matchedFields,
@@ -78,7 +78,7 @@ func (s *BreachService) searchSensitiveData(ctx context.Context, fieldHashes map
 			}
 
 			candidate := models.BreachCandidate{
-				Name:            metadata.Name,
+				Name:            metadata.DisplayName, // Use display_name instead of name
 				Date:            metadata.Date.Format("2006-01-02"),
 				AffectedRecords: s.formatRecordCount(int(metadata.AffectedRecords)),
 				HashCandidates:  map[string][]string{fieldType: hashes},
