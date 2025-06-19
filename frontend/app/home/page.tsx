@@ -15,7 +15,6 @@ import {
   User,
   Phone,
   Mail,
-  MapPin,
   Shield,
   AlertTriangle,
   CheckCircle,
@@ -25,7 +24,78 @@ import {
   Lock,
   CreditCard,
   Hash,
+  Loader2,
 } from "lucide-react"
+
+// Universal salt - in production, get this from environment or server
+const UNIVERSAL_SALT = "your-super-secret-universal-salt-breachguard";
+
+// Hashing service
+class HashingService {
+  private universalSalt: string;
+  
+  constructor() {
+    this.universalSalt = UNIVERSAL_SALT;
+  }
+  
+  async generateFullHash(value: string, fieldType: string): Promise<string> {
+    const fieldSalt = this.getFieldSalt(fieldType);
+    const normalized = this.normalizeInput(value, fieldType);
+    const combined = this.universalSalt + fieldSalt + normalized;
+    
+    const encoder = new TextEncoder();
+    const data = encoder.encode(combined);
+    const hashBuffer = await crypto.subtle.digest('SHA-512', data);
+    
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  
+  generatePartialHash(fullHash: string): string {
+    return fullHash.substring(0, 8);
+  }
+  
+  private getFieldSalt(fieldType: string): string {
+    const fieldSalts: Record<string, string> = {
+      email: "email_salt",
+      phone: "phone_salt",
+      firstName: "fname_salt", 
+      lastName: "lname_salt",
+      ssn: "ssn_salt",
+      creditCard: "cc_salt",
+      password: "password_salt",
+      username: "username_salt",
+      address: "address_salt",
+      city: "city_salt",
+      state: "state_salt",
+      zipCode: "zip_salt",
+      country: "country_salt",
+      dateOfBirth: "dob_salt",
+      driverLicense: "dl_salt",
+      passport: "passport_salt"
+    };
+    return fieldSalts[fieldType] || "default_salt";
+  }
+  
+  private normalizeInput(value: string, fieldType: string): string {
+    value = value.trim();
+    switch (fieldType) {
+      case "email":
+        return value.toLowerCase();
+      case "phone":
+        return value.replace(/\D/g, '');
+      case "firstName":
+      case "lastName":
+        return value.toLowerCase();
+      case "ssn":
+      case "creditCard":
+      case "driverLicense":
+        return value.replace(/\D/g, '');
+      default:
+        return value.toLowerCase();
+    }
+  }
+}
 
 interface SearchField {
   id: string
@@ -34,45 +104,20 @@ interface SearchField {
   icon: any
   type: "text" | "password"
   sensitive?: boolean
-  format?: string
-  validation?: (value: string) => boolean
 }
 
 const availableFields: SearchField[] = [
   { id: "firstName", label: "First Name", placeholder: "John", icon: User, type: "text" },
   { id: "lastName", label: "Last Name", placeholder: "Doe", icon: User, type: "text" },
   { id: "email", label: "Email", placeholder: "john@example.com", icon: Mail, type: "text" },
-  {
-    id: "phone",
-    label: "Phone Number",
-    placeholder: "+1 (555)-123-4567",
-    icon: Phone,
-    type: "text",
-    format: "+extension (###)-###-####",
-    validation: (value: string) => /^\+\d{1,3} $$\d{3}$$-\d{3}-\d{4}$/.test(value),
-  },
-  {
-    id: "address",
-    label: "Address",
-    placeholder: "123 Main St, New York, NY, 10001",
-    icon: MapPin,
-    type: "text",
-    format: "Street, City, State, ZIP",
-    validation: (value: string) => {
-      const parts = value.split(",").map((part) => part.trim())
-      return parts.length === 4 && parts.every((part) => part.length > 0)
-    },
-  },
+  { id: "phone", label: "Phone Number", placeholder: "+1 (555) 123-4567", icon: Phone, type: "text" },
   { id: "username", label: "Username", placeholder: "your_username", icon: User, type: "text" },
-  {
-    id: "dateOfBirth",
-    label: "Date of Birth",
-    placeholder: "MM/DD/YYYY",
-    icon: User,
-    type: "text",
-    format: "MM/DD/YYYY",
-    validation: (value: string) => /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])\/\d{4}$/.test(value),
-  },
+  { id: "address", label: "Address", placeholder: "123 Main St", icon: User, type: "text" },
+  { id: "city", label: "City", placeholder: "New York", icon: User, type: "text" },
+  { id: "state", label: "State", placeholder: "NY", icon: User, type: "text" },
+  { id: "zipCode", label: "ZIP Code", placeholder: "10001", icon: Hash, type: "text" },
+  { id: "country", label: "Country", placeholder: "United States", icon: User, type: "text" },
+  { id: "dateOfBirth", label: "Date of Birth", placeholder: "1990-01-01", icon: User, type: "text" },
 ]
 
 const sensitiveFields: SearchField[] = [
@@ -104,24 +149,45 @@ const sensitiveFields: SearchField[] = [
   { id: "passport", label: "Passport Number", placeholder: "A12345678", icon: Hash, type: "password", sensitive: true },
 ]
 
+interface BreachSummary {
+  name: string;
+  date: string;
+  records: string;
+  severity: string;
+  matchedFields: string[];
+  partialMatch: boolean;
+  riskScore: number;
+  timeAgo?: string;
+}
+
+interface SearchResults {
+  found: boolean;
+  breaches: number;
+  records: number;
+  searchFields: string[];
+  totalBreaches: number;
+  breachList: BreachSummary[];
+}
+
 export default function SearchPage() {
   const [activeFields, setActiveFields] = useState<string[]>(["firstName"])
   const [selectedSensitiveField, setSelectedSensitiveField] = useState<string>("")
   const [searchValues, setSearchValues] = useState<Record<string, string>>({})
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [showPassword, setShowPassword] = useState(false)
-  const [searchResults, setSearchResults] = useState<any>(null)
+  const [searchResults, setSearchResults] = useState<SearchResults | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [breachSearchQuery, setBreachSearchQuery] = useState("")
   const [searchMode, setSearchMode] = useState<"personal" | "sensitive">("personal")
 
+  const hashingService = new HashingService();
+
   // Filter breaches based on search query
-  const filteredBreaches =
-    searchResults?.breachList?.filter(
-      (breach: any) =>
-        breach.name.toLowerCase().includes(breachSearchQuery.toLowerCase()) ||
-        breach.severity.toLowerCase().includes(breachSearchQuery.toLowerCase()),
-    ) || []
+  const filteredBreaches = searchResults?.breachList?.filter(
+    (breach) =>
+      breach.name.toLowerCase().includes(breachSearchQuery.toLowerCase()) ||
+      breach.severity.toLowerCase().includes(breachSearchQuery.toLowerCase()),
+  ) || []
 
   const addField = (fieldId: string) => {
     if (!activeFields.includes(fieldId)) {
@@ -131,59 +197,16 @@ export default function SearchPage() {
 
   const removeField = (fieldId: string) => {
     setActiveFields(activeFields.filter((id) => id !== fieldId))
-    // Clear the value and error when removing field
     const newValues = { ...searchValues }
-    const newErrors = { ...fieldErrors }
     delete newValues[fieldId]
-    delete newErrors[fieldId]
     setSearchValues(newValues)
-    setFieldErrors(newErrors)
-  }
-
-  const validateField = (fieldId: string, value: string) => {
-    const field = getFieldById(fieldId)
-    if (!field || !field.validation || !value.trim()) {
-      return ""
-    }
-
-    if (!field.validation(value)) {
-      return `Please use format: ${field.format}`
-    }
-
-    return ""
-  }
-
-  const handleFieldChange = (fieldId: string, value: string) => {
-    setSearchValues((prev) => ({ ...prev, [fieldId]: value }))
-
-    // Clear error when user starts typing
-    if (fieldErrors[fieldId]) {
-      setFieldErrors((prev) => {
-        const newErrors = { ...prev }
-        delete newErrors[fieldId]
-        return newErrors
-      })
-    }
-
-    // Validate on blur or when field is complete
-    const field = getFieldById(fieldId)
-    if (field?.validation && value.trim()) {
-      const error = validateField(fieldId, value)
-      if (error) {
-        setFieldErrors((prev) => ({ ...prev, [fieldId]: error }))
-      }
-    }
   }
 
   const handleSensitiveFieldChange = (fieldId: string) => {
-    // Clear previous sensitive field value and error
     if (selectedSensitiveField) {
       const newValues = { ...searchValues }
-      const newErrors = { ...fieldErrors }
       delete newValues[selectedSensitiveField]
-      delete newErrors[selectedSensitiveField]
       setSearchValues(newValues)
-      setFieldErrors(newErrors)
     }
     setSelectedSensitiveField(fieldId)
     setShowPassword(false)
@@ -192,88 +215,213 @@ export default function SearchPage() {
   const clearSensitiveField = () => {
     if (selectedSensitiveField) {
       const newValues = { ...searchValues }
-      const newErrors = { ...fieldErrors }
       delete newValues[selectedSensitiveField]
-      delete newErrors[selectedSensitiveField]
       setSearchValues(newValues)
-      setFieldErrors(newErrors)
     }
     setSelectedSensitiveField("")
     setShowPassword(false)
   }
 
   const handleSearch = async () => {
-    // Validate all fields before searching
-    const errors: Record<string, string> = {}
-    const fieldsToValidate =
-      searchMode === "personal" ? activeFields : selectedSensitiveField ? [selectedSensitiveField] : []
-
-    fieldsToValidate.forEach((fieldId) => {
-      const value = searchValues[fieldId]
-      if (value?.trim()) {
-        const error = validateField(fieldId, value)
-        if (error) {
-          errors[fieldId] = error
-        }
-      }
-    })
-
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors)
-      return
-    }
-
-    setIsSearching(true)
+    setIsSearching(true);
+    setSearchError(null);
+    setSearchResults(null);
 
     try {
-      // Prepare search data based on mode
-      const searchData = {
+      const searchData: any = {
         mode: searchMode,
-        fields:
-          searchMode === "personal"
-            ? activeFields.reduce(
-                (acc, fieldId) => {
-                  if (searchValues[fieldId]?.trim()) {
-                    acc[fieldId] = searchValues[fieldId].trim()
-                  }
-                  return acc
-                },
-                {} as Record<string, string>,
-              )
-            : selectedSensitiveField && searchValues[selectedSensitiveField]?.trim()
-              ? { [selectedSensitiveField]: searchValues[selectedSensitiveField].trim() }
-              : {},
+        fields: {},
+        clientHashes: {}
+      };
+
+      if (searchMode === "personal") {
+        for (const fieldId of activeFields) {
+          if (searchValues[fieldId]?.trim()) {
+            const fullHash = await hashingService.generateFullHash(
+              searchValues[fieldId].trim(), 
+              fieldId
+            );
+            searchData.fields[fieldId] = fullHash;
+          }
+        }
+      } else if (selectedSensitiveField && searchValues[selectedSensitiveField]?.trim()) {
+        const fullHash = await hashingService.generateFullHash(
+          searchValues[selectedSensitiveField].trim(),
+          selectedSensitiveField
+        );
+        const partialHash = hashingService.generatePartialHash(fullHash);
+        
+        searchData.fields[selectedSensitiveField] = partialHash;
+        searchData.clientHashes[selectedSensitiveField] = fullHash;
       }
 
-      // Check if we have any search values
+      // Check if we have any search data
       if (Object.keys(searchData.fields).length === 0) {
-        setIsSearching(false)
-        return
+        setSearchError("Please enter data to search for breaches");
+        return;
       }
 
-      // Make API call to search endpoint
       const response = await fetch("/api/breach-search", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(searchData),
-      })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: searchData.mode,
+          fields: searchData.fields
+        })
+      });
 
       if (!response.ok) {
-        throw new Error("Search failed")
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server error: ${response.status}`);
       }
 
-      const results = await response.json()
-      setSearchResults(results)
+      const serverResults = await response.json();
+      
+      let verifiedResults;
+      if (searchMode === "personal") {
+        verifiedResults = processPersonalResults(serverResults);
+      } else {
+        verifiedResults = verifySensitiveMatches(serverResults, searchData.clientHashes);
+      }
+      
+      setSearchResults(verifiedResults);
+
     } catch (error) {
-      console.error("Search error:", error)
-      // Handle error - could show error message to user
-      setSearchResults(null)
+      console.error("Search error:", error);
+      
+      if (error instanceof Error) {
+        setSearchError(error.message);
+      } else {
+        setSearchError("An unexpected error occurred while searching. Please try again.");
+      }
+      
+      setSearchResults(null);
     } finally {
-      setIsSearching(false)
+      setIsSearching(false);
     }
-  }
+  };
+
+  const processPersonalResults = (serverResults: any): SearchResults => {
+    const processedBreaches: BreachSummary[] = [];
+    
+    for (const breach of serverResults.exactMatches || []) {
+      const severity = calculateDynamicSeverity(breach.matchedFields, breach.affectedRecords);
+      
+      processedBreaches.push({
+        name: breach.name,
+        date: breach.date,
+        records: breach.affectedRecords,
+        severity: severity,
+        matchedFields: breach.matchedFields,
+        partialMatch: breach.partialMatch,
+        riskScore: calculateRiskScore(breach.matchedFields),
+        timeAgo: formatTimeAgo(breach.date)
+      });
+    }
+    
+    return {
+      found: processedBreaches.length > 0,
+      breaches: processedBreaches.length,
+      records: processedBreaches.reduce((sum, b) => sum + parseInt(b.records.replace(/\D/g, '')), 0),
+      searchFields: serverResults.searchFields || [],
+      totalBreaches: processedBreaches.length,
+      breachList: processedBreaches
+    };
+  };
+
+  const verifySensitiveMatches = (serverResults: any, clientHashes: Record<string, string>): SearchResults => {
+    const verifiedBreaches: BreachSummary[] = [];
+    
+    for (const breach of serverResults.candidateBreaches || []) {
+      const matchedFields: string[] = [];
+      
+      for (const [fieldType, candidateHashes] of Object.entries(breach.hashCandidates || {})) {
+        const userFullHash = clientHashes[fieldType];
+        if (userFullHash && (candidateHashes as string[]).includes(userFullHash)) {
+          matchedFields.push(fieldType);
+        }
+      }
+      
+      if (matchedFields.length > 0) {
+        const severity = calculateDynamicSeverity(matchedFields, breach.affectedRecords);
+        
+        verifiedBreaches.push({
+          name: breach.name,
+          date: breach.date,
+          records: breach.affectedRecords,
+          severity: severity,
+          matchedFields: matchedFields,
+          partialMatch: false,
+          riskScore: calculateRiskScore(matchedFields),
+          timeAgo: formatTimeAgo(breach.date)
+        });
+      }
+    }
+    
+    return {
+      found: verifiedBreaches.length > 0,
+      breaches: verifiedBreaches.length,
+      records: verifiedBreaches.reduce((sum, b) => sum + parseInt(b.records.replace(/\D/g, '')), 0),
+      searchFields: Object.keys(clientHashes),
+      totalBreaches: verifiedBreaches.length,
+      breachList: verifiedBreaches
+    };
+  };
+
+  const calculateDynamicSeverity = (matchedFields: string[], recordCount: string): string => {
+    let score = 0;
+    
+    const fieldScores: Record<string, number> = {
+      ssn: 100, creditCard: 90, driverLicense: 80, passport: 85, password: 75,
+      email: 40, phone: 35, address: 45,
+      firstName: 20, lastName: 25, username: 30,
+      city: 15, state: 10, zipCode: 20, dateOfBirth: 50, country: 10
+    };
+    
+    for (const field of matchedFields) {
+      score += fieldScores[field] || 10;
+    }
+    
+    const records = parseInt(recordCount.replace(/\D/g, '')) || 0;
+    if (records > 100000000) {
+      score = Math.floor(score * 1.3);
+    } else if (records > 10000000) {
+      score = Math.floor(score * 1.1);
+    }
+    
+    const sensitiveFields = ['ssn', 'creditCard', 'driverLicense', 'passport', 'password', 'dateOfBirth'];
+    const sensitiveCount = matchedFields.filter(field => sensitiveFields.includes(field)).length;
+    
+    if (sensitiveCount >= 3) {
+      score = Math.floor(score * 1.4);
+    } else if (sensitiveCount >= 2) {
+      score = Math.floor(score * 1.2);
+    }
+    
+    if (score >= 200) return "Critical";
+    if (score >= 120) return "High";
+    if (score >= 60) return "Medium";
+    return "Low";
+  };
+
+  const calculateRiskScore = (matchedFields: string[]): number => {
+    const severity = calculateDynamicSeverity(matchedFields, "1000000");
+    const scoreMap = { Critical: 95, High: 75, Medium: 50, Low: 25 };
+    return scoreMap[severity as keyof typeof scoreMap] || 25;
+  };
+
+  const formatTimeAgo = (date: string): string => {
+    const breachDate = new Date(date);
+    const now = new Date();
+    const years = Math.floor((now.getTime() - breachDate.getTime()) / (1000 * 60 * 60 * 24 * 365));
+    
+    if (years >= 1) {
+      return `${years} year${years > 1 ? 's' : ''} ago`;
+    }
+    
+    const months = Math.floor((now.getTime() - breachDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    return `${months} month${months > 1 ? 's' : ''} ago`;
+  };
 
   const getFieldById = (fieldId: string): SearchField | undefined => {
     return [...availableFields, ...sensitiveFields].find((field) => field.id === fieldId)
@@ -281,16 +429,15 @@ export default function SearchPage() {
 
   const selectedSensitiveFieldData = selectedSensitiveField ? getFieldById(selectedSensitiveField) : null
 
-  // Check if search can be performed (no validation errors and has values)
-  const canSearch = () => {
-    const hasErrors = Object.keys(fieldErrors).length > 0
-    const hasValues =
-      searchMode === "personal"
-        ? activeFields.some((fieldId) => searchValues[fieldId]?.trim())
-        : selectedSensitiveField && searchValues[selectedSensitiveField]?.trim()
-
-    return !hasErrors && hasValues && !isSearching
-  }
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case "Critical": return "destructive";
+      case "High": return "destructive";
+      case "Medium": return "secondary";
+      case "Low": return "outline";
+      default: return "outline";
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -360,52 +507,41 @@ export default function SearchPage() {
                   <span>Personal Information Search</span>
                 </CardTitle>
                 <CardDescription>
-                  Add or remove fields to customize your search. Multiple fields help narrow down results. Some fields
-                  require specific formats.
+                  Add or remove fields to customize your search. Multiple fields help narrow down results.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Active Fields */}
-                <div className="space-y-3">
-                  {activeFields.map((fieldId) => {
-                    const field = getFieldById(fieldId)
-                    if (!field) return null
-                    const Icon = field.icon
-                    const hasError = fieldErrors[fieldId]
+                {activeFields.map((fieldId) => {
+                  const field = getFieldById(fieldId)
+                  if (!field) return null
+                  const Icon = field.icon
 
-                    return (
-                      <div key={fieldId} className="flex items-start space-x-2">
-                        <div className="flex-1">
-                          <Label htmlFor={fieldId} className="flex items-center space-x-2 mb-2">
-                            <Icon className="h-4 w-4" />
-                            <span>{field.label}</span>
-                            {field.format && (
-                              <Badge variant="outline" className="text-xs">
-                                Format: {field.format}
-                              </Badge>
-                            )}
-                          </Label>
-                          <Input
-                            id={fieldId}
-                            placeholder={field.placeholder}
-                            value={searchValues[fieldId] || ""}
-                            onChange={(e) => handleFieldChange(fieldId, e.target.value)}
-                            className={hasError ? "border-red-500 focus:border-red-500" : ""}
-                          />
-                          {hasError && <p className="text-sm text-red-600 mt-1">{hasError}</p>}
-                        </div>
+                  return (
+                    <div key={fieldId} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor={fieldId} className="flex items-center space-x-2">
+                          <Icon className="h-4 w-4" />
+                          <span>{field.label}</span>
+                        </Label>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => removeField(fieldId)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 mt-8"
+                          className="h-8 w-8 p-0"
                         >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                    )
-                  })}
-                </div>
+                      <Input
+                        id={fieldId}
+                        placeholder={field.placeholder}
+                        value={searchValues[fieldId] || ""}
+                        onChange={(e) => setSearchValues({ ...searchValues, [fieldId]: e.target.value })}
+                      />
+                    </div>
+                  )
+                })}
 
                 {/* Add Field Buttons */}
                 <div className="flex flex-wrap gap-2">
@@ -446,160 +582,189 @@ export default function SearchPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Sensitive Field Selector */}
+                {/* Sensitive Field Selection */}
                 <div className="space-y-2">
-                  <Label htmlFor="sensitiveSelect">Select Sensitive Data Type</Label>
-                  <div className="flex items-center space-x-2">
-                    <div className="flex-1">
-                      <Select value={selectedSensitiveField} onValueChange={handleSensitiveFieldChange}>
-                        <SelectTrigger id="sensitiveSelect">
-                          <SelectValue placeholder="Choose a sensitive data type to search..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {sensitiveFields.map((field) => {
-                            const Icon = field.icon
-                            return (
-                              <SelectItem key={field.id} value={field.id}>
-                                <div className="flex items-center space-x-2">
-                                  <Icon className="h-4 w-4" />
-                                  <span>{field.label}</span>
-                                </div>
-                              </SelectItem>
-                            )
-                          })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {selectedSensitiveField && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearSensitiveField}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+                  <Label>Select Sensitive Data Type</Label>
+                  <Select value={selectedSensitiveField} onValueChange={handleSensitiveFieldChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose sensitive data type to search" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sensitiveFields.map((field) => {
+                        const Icon = field.icon
+                        return (
+                          <SelectItem key={field.id} value={field.id}>
+                            <div className="flex items-center space-x-2">
+                              <Icon className="h-4 w-4" />
+                              <span>{field.label}</span>
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                {/* Selected Sensitive Field Input */}
+                {/* Sensitive Field Input */}
                 {selectedSensitiveFieldData && (
                   <div className="space-y-2">
-                    <Label htmlFor="sensitiveInput" className="flex items-center space-x-2">
-                      <selectedSensitiveFieldData.icon className="h-4 w-4" />
-                      <span>{selectedSensitiveFieldData.label}</span>
-                      <Badge variant="secondary" className="text-xs">
-                        Sensitive
-                      </Badge>
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="sensitiveInput"
-                        type={selectedSensitiveFieldData.type === "password" && !showPassword ? "password" : "text"}
-                        placeholder={selectedSensitiveFieldData.placeholder}
-                        value={searchValues[selectedSensitiveField] || ""}
-                        onChange={(e) => handleFieldChange(selectedSensitiveField, e.target.value)}
-                        className="pr-10"
-                      />
-                      {selectedSensitiveFieldData.type === "password" && (
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="sensitiveInput" className="flex items-center space-x-2">
+                        <selectedSensitiveFieldData.icon className="h-4 w-4" />
+                        <span>{selectedSensitiveFieldData.label}</span>
+                      </Label>
+                      <div className="flex items-center space-x-2">
                         <Button
-                          type="button"
                           variant="ghost"
                           size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                           onClick={() => setShowPassword(!showPassword)}
+                          className="h-8 w-8 p-0"
                         >
-                          {showPassword ? (
-                            <EyeOff className="h-4 w-4 text-gray-400" />
-                          ) : (
-                            <Eye className="h-4 w-4 text-gray-400" />
-                          )}
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </Button>
-                      )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearSensitiveField}
+                          className="h-8 w-8 p-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
+                    <Input
+                      id="sensitiveInput"
+                      type={showPassword ? "text" : selectedSensitiveFieldData.type}
+                      placeholder={selectedSensitiveFieldData.placeholder}
+                      value={searchValues[selectedSensitiveField] || ""}
+                      onChange={(e) =>
+                        setSearchValues({ ...searchValues, [selectedSensitiveField]: e.target.value })
+                      }
+                    />
                   </div>
                 )}
-
-                <Alert className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
-                  <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                  <AlertDescription className="text-orange-800 dark:text-orange-200">
-                    <strong>Maximum Privacy:</strong> Sensitive searches are processed in complete isolation and cannot
-                    be correlated with other searches or data points.
-                  </AlertDescription>
-                </Alert>
               </CardContent>
             </Card>
           )}
 
           {/* Search Button */}
-          <Button
-            onClick={handleSearch}
-            disabled={!canSearch()}
-            className="w-full bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
-            size="lg"
-          >
-            <Search className="h-4 w-4 mr-2" />
-            {isSearching ? "Searching..." : "Search for Data Breaches"}
-          </Button>
+          <Card>
+            <CardContent className="pt-6">
+              <Button
+                onClick={handleSearch}
+                disabled={isSearching || (searchMode === "personal" ? activeFields.length === 0 : !selectedSensitiveField)}
+                className="w-full bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600"
+                size="lg"
+              >
+                {isSearching ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Searching Breaches...
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-2 h-5 w-5" />
+                    Check for Data Breaches
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
 
-          {/* Search Results */}
-          {searchResults && (
-            <Card className="mt-8">
+        {/* Results Panel */}
+        <div className="space-y-6">
+          {/* Error Display */}
+          {searchError && (
+            <Card className="border-red-200 dark:border-red-800">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2 text-red-700 dark:text-red-400">
+                  <AlertTriangle className="h-5 w-5" />
+                  <span>Search Error</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    <AlertDescription className="text-red-800 dark:text-red-200">
+                      <strong>Error:</strong> {searchError}
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <div className="text-sm text-muted-foreground space-y-2">
+                    <p><strong>Common issues:</strong></p>
+                    <ul className="list-disc list-inside space-y-1 ml-2">
+                      <li>Network connection problems</li>
+                      <li>Server temporarily unavailable</li>
+                      <li>Invalid search parameters</li>
+                      <li>Rate limiting (too many requests)</li>
+                    </ul>
+                    
+                    <p className="mt-3">
+                      <strong>Try:</strong> Check your connection and try searching again in a few moments.
+                    </p>
+                  </div>
+                  
+                  <Button 
+                    onClick={() => setSearchError(null)} 
+                    variant="outline" 
+                    size="sm"
+                    className="w-full"
+                  >
+                    Dismiss Error
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Search Status */}
+          {searchResults && !searchError && (
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   {searchResults.found ? (
-                    <AlertTriangle className="h-5 w-5 text-red-600" />
+                    <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
                   ) : (
-                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                   )}
-                  <span>Search Results</span>
+                  <span>{searchResults.found ? "Data Found in Breaches" : "No Data Found"}</span>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                  <div>
-                    <p className="font-medium">Fields Searched: {searchResults.searchFields.length}</p>
+              <CardContent>
+                {searchResults.found ? (
+                  <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">
-                      {searchResults.searchFields
-                        .map((fieldId: string) => {
-                          const field = getFieldById(fieldId)
-                          return field?.label
-                        })
-                        .join(", ")}
+                      Your data appears in <strong>{searchResults.breaches}</strong> breach{searchResults.breaches !== 1 ? 'es' : ''} affecting approximately{' '}
+                      <strong>{searchResults.records.toLocaleString()}</strong> total records.
                     </p>
-                  </div>
-                  <Badge variant={searchResults.found ? "destructive" : "default"}>
-                    {searchResults.found ? "Found in Breaches" : "Not Found"}
-                  </Badge>
-                </div>
-
-                {searchResults.found && (
-                  <div className="space-y-4">
+                    
                     <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
                       <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
                       <AlertDescription className="text-red-800 dark:text-red-200">
-                        <strong>Security Alert:</strong> Your information was found in {searchResults.breaches}{" "}
-                        breach(es) affecting {searchResults.records.toLocaleString()} records total.
+                        <strong>Action Recommended:</strong> Consider changing passwords and enabling two-factor authentication for affected accounts.
                       </AlertDescription>
                     </Alert>
 
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <h3 className="font-semibold">Affected Breaches ({searchResults.totalBreaches} total):</h3>
-                        <div className="relative w-64">
-                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder="Search breaches..."
-                            className="pl-10"
-                            value={breachSearchQuery}
-                            onChange={(e) => setBreachSearchQuery(e.target.value)}
-                          />
-                        </div>
+                        {searchResults.breachList.length > 3 && (
+                          <div className="relative w-64">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              placeholder="Search breaches..."
+                              className="pl-10"
+                              value={breachSearchQuery}
+                              onChange={(e) => setBreachSearchQuery(e.target.value)}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
-                        {filteredBreaches.map((breach: any, index: number) => (
+                        {filteredBreaches.map((breach, index) => (
                           <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
                             <div className="flex-1">
                               <div className="flex items-center space-x-2 mb-1">
@@ -611,130 +776,137 @@ export default function SearchPage() {
                                 )}
                               </div>
                               <p className="text-sm text-muted-foreground mb-1">
-                                {breach.date} • {breach.records} records
+                                {breach.date} • {breach.records} records • {breach.timeAgo}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                Matched:{" "}
-                                {breach.matchedFields
-                                  .map((fieldId: string) => {
-                                    const field = getFieldById(fieldId)
-                                    return field?.label
-                                  })
-                                  .join(", ")}
+                                Matched: {breach.matchedFields.map((fieldId) => {
+                                  const field = getFieldById(fieldId)
+                                  return field?.label
+                                }).join(", ")}
                               </p>
+                              <div className="flex items-center space-x-2 mt-1">
+                                <Badge variant={getSeverityColor(breach.severity) as any}>
+                                  {breach.severity}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  Risk: {breach.riskScore}/100
+                                </span>
+                              </div>
                             </div>
-                            <Badge variant={breach.severity === "High" ? "destructive" : "secondary"}>
-                              {breach.severity}
-                            </Badge>
                           </div>
                         ))}
-
-                        {filteredBreaches.length === 0 && breachSearchQuery && (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                            <p>No breaches found matching "{breachSearchQuery}"</p>
-                          </div>
-                        )}
                       </div>
-
-                      {filteredBreaches.length < searchResults.totalBreaches && !breachSearchQuery && (
-                        <div className="text-center py-2 text-sm text-muted-foreground border-t">
-                          Showing {filteredBreaches.length} of {searchResults.totalBreaches} breaches
-                        </div>
-                      )}
                     </div>
                   </div>
-                )}
-
-                {!searchResults.found && (
-                  <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-                    <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <AlertDescription className="text-green-800 dark:text-green-200">
-                      Good news! Your information was not found in any known data breaches in our database.
-                    </AlertDescription>
-                  </Alert>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Great news! Your data was not found in any known breaches.
+                    </p>
+                    <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      <AlertDescription className="text-green-800 dark:text-green-200">
+                        Your information appears to be secure based on our current database.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
                 )}
               </CardContent>
             </Card>
           )}
-        </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
+          {/* Information Panel */}
           <Card>
             <CardHeader>
-              <CardTitle>Search Tips</CardTitle>
+              <CardTitle className="flex items-center space-x-2">
+                <Info className="h-5 w-5" />
+                <span>How It Works</span>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
               <div className="flex items-start space-x-2">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium">Format requirements</p>
-                  <p className="text-muted-foreground">Phone: +1 (555)-123-4567</p>
-                  <p className="text-muted-foreground">Address: Street, City, State, ZIP</p>
+                <div className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-medium text-red-600 dark:text-red-400">1</span>
                 </div>
+                <p>
+                  <strong>Personal Mode:</strong> Search multiple fields simultaneously for comprehensive results.
+                  Your data is hashed locally before being sent to our servers.
+                </p>
               </div>
               <div className="flex items-start space-x-2">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium">Combine fields</p>
-                  <p className="text-muted-foreground">Use multiple personal fields for more accurate results</p>
+                <div className="w-6 h-6 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-medium text-orange-600 dark:text-orange-400">2</span>
                 </div>
+                <p>
+                  <strong>Sensitive Mode:</strong> Uses advanced k-anonymity protection. Only partial hashes are sent,
+                  and verification happens on your device for maximum privacy.
+                </p>
               </div>
               <div className="flex items-start space-x-2">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium">Search modes</p>
-                  <p className="text-muted-foreground">Choose personal OR sensitive search, not both</p>
+                <div className="w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-medium text-green-600 dark:text-green-400">3</span>
                 </div>
-              </div>
-              <div className="flex items-start space-x-2">
-                <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium">Privacy first</p>
-                  <p className="text-muted-foreground">No searches are logged or tracked</p>
-                </div>
+                <p>
+                  <strong>Privacy First:</strong> No search queries are logged or stored. Each search is independent
+                  and cannot be linked to you or your previous searches.
+                </p>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          {/* Security Information */}
+          <Card className="border-green-200 dark:border-green-800">
             <CardHeader>
-              <CardTitle>Recent Breach Activity</CardTitle>
+              <CardTitle className="flex items-center space-x-2 text-green-700 dark:text-green-400">
+                <Shield className="h-5 w-5" />
+                <span>Privacy Protection</span>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="text-sm">
-                <p className="font-medium">MegaCorp Data Leak</p>
-                <p className="text-muted-foreground">2.3M records • 2 hours ago</p>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex items-center space-x-2 text-green-800 dark:text-green-200">
+                <CheckCircle className="h-4 w-4" />
+                <span>End-to-end encryption of search data</span>
               </div>
-              <div className="text-sm">
-                <p className="font-medium">TechStart Breach</p>
-                <p className="text-muted-foreground">890K records • 1 day ago</p>
+              <div className="flex items-center space-x-2 text-green-800 dark:text-green-200">
+                <CheckCircle className="h-4 w-4" />
+                <span>No logging or tracking of searches</span>
               </div>
-              <div className="text-sm">
-                <p className="font-medium">RetailGiant Hack</p>
-                <p className="text-muted-foreground">1.7M records • 3 days ago</p>
+              <div className="flex items-center space-x-2 text-green-800 dark:text-green-200">
+                <CheckCircle className="h-4 w-4" />
+                <span>Client-side hashing and verification</span>
+              </div>
+              <div className="flex items-center space-x-2 text-green-800 dark:text-green-200">
+                <CheckCircle className="h-4 w-4" />
+                <span>K-anonymity protection for sensitive data</span>
               </div>
             </CardContent>
           </Card>
 
+          {/* Tips Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Security Actions</CardTitle>
+              <CardTitle className="flex items-center space-x-2">
+                <Info className="h-5 w-5" />
+                <span>Search Tips</span>
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Button variant="outline" className="w-full justify-start">
-                <Shield className="h-4 w-4 mr-2" />
-                Enable Monitoring
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                <Lock className="h-4 w-4 mr-2" />
-                Security Guide
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                <AlertTriangle className="h-4 w-4 mr-2" />
-                Report Breach
-              </Button>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <div className="space-y-1">
+                <p><strong>Personal Information:</strong></p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>Add multiple fields for more comprehensive results</li>
+                  <li>Use the exact format as it appears in your accounts</li>
+                  <li>Include variations like nicknames or maiden names</li>
+                </ul>
+              </div>
+              <div className="space-y-1">
+                <p><strong>Sensitive Data:</strong></p>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>Only search one sensitive field at a time</li>
+                  <li>Enter data exactly as it appears on documents</li>
+                  <li>Remember that partial matches protect your privacy</li>
+                </ul>
+              </div>
             </CardContent>
           </Card>
         </div>
