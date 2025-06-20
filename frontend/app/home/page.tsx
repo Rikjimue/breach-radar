@@ -278,6 +278,10 @@ export default function SearchPage() {
 
       const serverResults = await response.json();
       
+      // Debug logging to help troubleshoot
+      console.log("Server response:", serverResults);
+      console.log("Search mode:", searchMode);
+      
       let verifiedResults;
       if (searchMode === "personal") {
         verifiedResults = processPersonalResults(serverResults);
@@ -285,6 +289,7 @@ export default function SearchPage() {
         verifiedResults = verifySensitiveMatches(serverResults, searchData.clientHashes);
       }
       
+      console.log("Verified results:", verifiedResults);
       setSearchResults(verifiedResults);
 
     } catch (error) {
@@ -333,12 +338,30 @@ export default function SearchPage() {
   const verifySensitiveMatches = (serverResults: any, clientHashes: Record<string, string>): SearchResults => {
     const verifiedBreaches: BreachSummary[] = [];
     
-    for (const breach of serverResults.candidateBreaches || []) {
+    // Check for candidateBreaches in the expected format
+    const candidateBreaches = serverResults.candidateBreaches || [];
+    
+    if (!Array.isArray(candidateBreaches)) {
+      console.warn("candidateBreaches is not an array:", candidateBreaches);
+      return {
+        found: false,
+        breaches: 0,
+        records: 0,
+        searchFields: Object.keys(clientHashes),
+        totalBreaches: 0,
+        breachList: []
+      };
+    }
+    
+    for (const breach of candidateBreaches) {
       const matchedFields: string[] = [];
       
-      for (const [fieldType, candidateHashes] of Object.entries(breach.candidateHashes) as [string, string[]][]) {
+      // Check the expected hashCandidates structure
+      const hashCandidates = breach.hashCandidates || {};
+      
+      for (const [fieldType, candidateHashes] of Object.entries(hashCandidates) as [string, string[]][]) {
         const clientHash = clientHashes[fieldType];
-        if (clientHash && candidateHashes.includes(clientHash)) {
+        if (clientHash && Array.isArray(candidateHashes) && candidateHashes.includes(clientHash)) {
           matchedFields.push(fieldType);
         }
       }
@@ -362,7 +385,7 @@ export default function SearchPage() {
     return {
       found: verifiedBreaches.length > 0,
       breaches: verifiedBreaches.length,
-      records: verifiedBreaches.reduce((sum, b) => sum + parseInt(b.records.replace(/\D/g, '')), 0),
+      records: verifiedBreaches.reduce((sum, b) => sum + parseInt(b.records.replace(/\D/g, '') || '0'), 0),
       searchFields: Object.keys(clientHashes),
       totalBreaches: verifiedBreaches.length,
       breachList: verifiedBreaches
@@ -412,12 +435,47 @@ export default function SearchPage() {
   const selectedSensitiveFieldData = selectedSensitiveField ? getFieldById(selectedSensitiveField) : null
 
   const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "Critical": return "destructive";
-      case "High": return "destructive";
-      case "Medium": return "secondary";
-      case "Low": return "outline";
-      default: return "outline";
+    switch (severity.toLowerCase()) {
+      case "critical": 
+        return "destructive";
+      case "high": 
+        return "destructive";
+      case "medium": 
+        return "secondary";
+      case "low": 
+        return "outline";
+      default: 
+        return "outline";
+    }
+  };
+
+  const getSeverityTextColor = (severity: string) => {
+    switch (severity.toLowerCase()) {
+      case "critical":
+        return "text-red-900 dark:text-red-100";
+      case "high":
+        return "text-red-800 dark:text-red-200";
+      case "medium":
+        return "text-orange-800 dark:text-orange-200";
+      case "low":
+        return "text-yellow-800 dark:text-yellow-200";
+      default:
+        return "text-gray-800 dark:text-gray-200";
+    }
+  };
+
+  const getSeverityBgColor = (severity: string) => {
+    switch (severity.toLowerCase()) {
+      case "critical":
+        return "bg-red-100 dark:bg-red-950/50 border-red-300 dark:border-red-800";
+      case "high":
+        return "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800";
+      case "medium":
+        return "bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800";
+      case "low":
+        return "bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800";
+      default:
+        return "bg-gray-50 dark:bg-gray-950/30 border-gray-200 dark:border-gray-800";
     }
   };
 
@@ -768,29 +826,37 @@ export default function SearchPage() {
 
                           <div className="max-h-96 overflow-y-auto space-y-3 pr-2">
                             {filteredBreaches.map((breach, index) => (
-                              <div key={index} className="border border-red-200 dark:border-red-800 rounded-lg p-4 bg-red-50 dark:bg-red-950/50">
+                              <div 
+                                key={index} 
+                                className={`border rounded-lg p-4 ${getSeverityBgColor(breach.severity)}`}
+                              >
                                 <div className="flex items-start justify-between">
                                   <div className="space-y-2">
                                     <div className="flex items-center space-x-2">
-                                      <h4 className="font-medium text-red-900 dark:text-red-100">{breach.name}</h4>
+                                      <h4 className={`font-medium ${getSeverityTextColor(breach.severity)}`}>
+                                        {breach.name}
+                                      </h4>
                                       <Badge variant={getSeverityColor(breach.severity)} className="text-xs">
                                         {breach.severity}
                                       </Badge>
                                     </div>
-                                    <p className="text-sm text-red-700 dark:text-red-300">
+                                    <p className={`text-sm ${getSeverityTextColor(breach.severity)}`}>
                                       <strong>Date:</strong> {breach.date} ({breach.timeAgo})
                                     </p>
-                                    <p className="text-sm text-red-700 dark:text-red-300">
+                                    <p className={`text-sm ${getSeverityTextColor(breach.severity)}`}>
                                       <strong>Affected Records:</strong> {parseInt(breach.records).toLocaleString()}
                                     </p>
-                                    <p className="text-sm text-red-700 dark:text-red-300">
+                                    <p className={`text-sm ${getSeverityTextColor(breach.severity)}`}>
                                       <strong>Matched Fields:</strong> {breach.matchedFields.join(", ")}
                                     </p>
-                                    <p className="text-sm text-red-700 dark:text-red-300">
+                                    <p className={`text-sm ${getSeverityTextColor(breach.severity)}`}>
                                       <strong>Risk Score:</strong> {breach.riskScore}/100
                                     </p>
                                   </div>
-                                  <Badge variant="destructive" className="ml-4">
+                                  <Badge 
+                                    variant={breach.severity.toLowerCase() === "critical" || breach.severity.toLowerCase() === "high" ? "destructive" : "secondary"}
+                                    className="ml-4"
+                                  >
                                     Verified
                                   </Badge>
                                 </div>
