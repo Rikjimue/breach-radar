@@ -11,7 +11,7 @@ export default function ContactPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">Contact Security Team</h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+        <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
           Get in touch with our security researchers and support team. We're here to help with breach investigations,
           API support, and security research collaboration.
         </p>

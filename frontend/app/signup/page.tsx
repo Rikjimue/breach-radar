@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { User, Mail, Lock, Eye, EyeOff, Shield, Building } from "lucide-react"
+import { User, Mail, Lock, Eye, EyeOff, Radar, Building } from "lucide-react"
 
 export default function SignupPage() {
   return (
@@ -13,7 +13,7 @@ export default function SignupPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto w-12 h-12 bg-red-600 dark:bg-red-500 rounded-lg flex items-center justify-center mb-4">
-            <Shield className="h-6 w-6 text-white" />
+            <Radar className="h-6 w-6 text-white" />
           </div>
           <CardTitle className="text-2xl">Get API Access</CardTitle>
           <CardDescription>Create your BreachGuard account to start using our breach monitoring API</CardDescription>

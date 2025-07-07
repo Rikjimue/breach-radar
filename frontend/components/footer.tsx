@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Mail, Shield, Database, Github } from "lucide-react"
+import { Mail, Radar, Database, Github } from "lucide-react"
 
 export default function Footer() {
   return (
@@ -10,9 +10,9 @@ export default function Footer() {
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-red-600 dark:bg-red-500 rounded-lg flex items-center justify-center">
-                <Shield className="h-5 w-5 text-white" />
+                <Radar className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold">BreachGuard</span>
+              <span className="text-xl font-bold">Breach Radar</span>
             </div>
             <p className="text-gray-400 dark:text-gray-500">
               Protecting your digital identity through comprehensive breach monitoring and privacy-focused security
@@ -83,7 +83,7 @@ export default function Footer() {
             <ul className="space-y-2">
               <li className="flex items-center space-x-2 text-gray-400 dark:text-gray-500">
                 <Mail className="h-4 w-4" />
-                <span>security@breachguard.com</span>
+                <span>security@breachradar.com</span>
               </li>
               <li className="flex items-center space-x-2 text-gray-400 dark:text-gray-500">
                 <Database className="h-4 w-4" />
@@ -99,7 +99,7 @@ export default function Footer() {
 
         <div className="border-t border-gray-800 dark:border-gray-900 mt-8 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
-            <p className="text-gray-400 dark:text-gray-500">&copy; 2024 BreachGuard. All rights reserved.</p>
+            <p className="text-gray-400 dark:text-gray-500">&copy; 2025 BreachRadar. All rights reserved.</p>
             <div className="flex items-center space-x-4 mt-4 md:mt-0">
               <span className="text-sm text-gray-400 dark:text-gray-500">Responsible Disclosure</span>
               <span className="text-sm text-gray-400 dark:text-gray-500">•</span>

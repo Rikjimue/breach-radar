@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Mail, Lock, Eye, Shield, Database } from "lucide-react"
+import { Mail, Lock, Eye, Radar, Database } from "lucide-react"
 
 export default function LoginPage() {
   return (
@@ -11,7 +11,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto w-12 h-12 bg-red-600 dark:bg-red-500 rounded-lg flex items-center justify-center mb-4">
-            <Shield className="h-6 w-6 text-white" />
+            <Radar className="h-6 w-6 text-white" />
           </div>
           <CardTitle className="text-2xl">API Access Login</CardTitle>
           <CardDescription>Sign in to access your BreachGuard API dashboard and manage your account</CardDescription>

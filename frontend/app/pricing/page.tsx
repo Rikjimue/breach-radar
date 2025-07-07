@@ -67,7 +67,7 @@ export default function PricingPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="text-center mb-16">
-        <h1 className="text-4xl md:text-5xl font-bold mb-6">API Access & Pricing</h1>
+        <h1 className="text-4xl font-bold mb-4">API Access & Pricing</h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
           Choose the right plan for your security needs. All plans include privacy-protected searches and comprehensive
           breach data.

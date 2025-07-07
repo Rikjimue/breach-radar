@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
-import { Menu, Search, BarChart3, Info, Mail, DollarSign, Shield, Database, Sun, Moon } from "lucide-react"
+import { Menu, Search, BarChart3, Info, Mail, DollarSign, Radar, Database, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -29,9 +29,9 @@ export default function Navbar() {
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-red-600 dark:bg-red-500 rounded-lg flex items-center justify-center">
-              <Shield className="h-5 w-5 text-white" />
+              <Radar className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-foreground">BreachGuard</span>
+            <span className="text-xl font-bold text-foreground">Breach Radar</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -71,7 +71,7 @@ export default function Navbar() {
             </Button>
             <Button size="sm" className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600" asChild>
               <Link href="/signup">
-                <Shield className="h-4 w-4 mr-2" />
+                <Radar className="h-4 w-4 mr-2" />
                 Get Protected
               </Link>
             </Button>
@@ -128,7 +128,7 @@ export default function Navbar() {
                     asChild
                   >
                     <Link href="/signup" onClick={() => setIsOpen(false)}>
-                      <Shield className="h-4 w-4 mr-2" />
+                      <Radar className="h-4 w-4 mr-2" />
                       Get Protected
                     </Link>
                   </Button>

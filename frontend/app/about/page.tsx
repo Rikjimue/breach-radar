@@ -7,8 +7,8 @@ export default function AboutPage() {
     <div className="container mx-auto px-4 py-8">
       {/* Hero Section */}
       <div className="text-center mb-16">
-        <h1 className="text-4xl md:text-5xl font-bold mb-6">About BreachGuard</h1>
-        <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+        <h1 className="text-4xl font-bold mb-4">About Breach Radar</h1>
+        <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
           We're dedicated to protecting your digital identity by providing comprehensive, privacy-focused breach
           monitoring and security research tools. Our mission is to democratize access to breach data for defensive
           security purposes.

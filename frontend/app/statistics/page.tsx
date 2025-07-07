@@ -374,8 +374,8 @@ export default function StatisticsPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Data Breach Statistics</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-4xl font-bold mb-4">Data Breach Statistics</h1>
+          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
             Understanding cyber threats and how to protect yourself
           </p>
         </div>
@@ -400,8 +400,8 @@ export default function StatisticsPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Data Breach Statistics</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-4xl font-bold mb-4">Data Breach Statistics</h1>
+          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
             Understanding cyber threats and how to protect yourself
           </p>
         </div>
@@ -428,8 +428,8 @@ export default function StatisticsPage() {
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Data Breach Statistics</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-4xl font-bold mb-4">Data Breach Statistics</h1>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
               Understanding cyber threats and how to protect yourself
             </p>
           </div>

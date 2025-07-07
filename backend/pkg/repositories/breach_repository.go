@@ -108,14 +108,15 @@ func (r *SQLBreachRepository) FindSensitiveMatches(ctx context.Context, fieldTyp
 	query := fmt.Sprintf(`
 		SELECT breach_source, %s
 		FROM %s 
-		WHERE %s LIKE $1
-		LIMIT 1000`,
+		WHERE LEFT(%s, 6) = $1
+		ORDER BY breach_source, %s`,
 		pq.QuoteIdentifier(columnName),
 		pq.QuoteIdentifier(tableName),
 		pq.QuoteIdentifier(columnName),
+		pq.QuoteIdentifier(columnName),
 	)
 
-	rows, err := r.db.QueryContext(ctx, query, partialHash+"%")
+	rows, err := r.db.QueryContext(ctx, query, partialHash)
 	if err != nil {
 		return nil, fmt.Errorf("error querying sensitive data table %s: %w", tableName, err)
 	}
